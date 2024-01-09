@@ -1,0 +1,53 @@
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: simple-monitoring
+  namespace: monitoring
+  labels:
+    jobgroup: parallel
+spec:
+  schedule: '*/5 * * * *'
+  successfulJobsHistoryLimit: 0
+  failedJobsHistoryLimit: 0
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          name: kubejob
+          labels:
+            jobgroup: parallel
+        spec:
+          topologySpreadConstraints:
+            - maxSkew: 2
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  jobgroup: parallel
+          containers:
+            - name: simple-monitoring
+              image: busybox
+              imagePullPolicy: IfNotPresent
+              command: ['/bin/bash', '/tmp/monitor.sh']
+              securityContext:
+                privileged: true
+              volumeMounts:
+                # give access to underlying node devices
+                - name: device-dir
+                  mountPath: /dev
+                - name: monitor-script
+                  mountPath: /tmp/monitor.sh
+                  subPath: monitor.sh
+          volumes:
+            - name: device-dir
+              hostPath:
+                path: /dev
+            - name: monitor-script
+              configMap:
+                name: monitor-script
+                defaultMode: 256
+          restartPolicy: OnFailure
+          terminationGracePeriodSeconds: 0
+      parallelism: 5
+  concurrencyPolicy: Allow
