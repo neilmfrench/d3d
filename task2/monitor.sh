@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Function to send slack alert
+send_slack_alert() {
+  curl -s -X POST -H 'Content-type: application/json' --data "{\"text\":\"$1\"}" "$SLACK_WEBHOOK_URL"
+}
+
+# error out on unset variables
+set -u
+
+# Thresholds, default to 75%
+CPU_THRESHOLD=${CPU_THRESHOLD:=75}
+MEMORY_THRESHOLD=${MEMORY_THRESHOLD:=75}
+DISK_THRESHOLD=${DISK_THRESHOLD:=75}
+
+# Check for slack configuration
+if [ -z "$SLACK_WEBHOOK_URL" ]; then
+    echo "Error: SLACK_WEBHOOK_URL not set"
+    exit 1
+fi
+
+# Check CPU usage
+CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d '.' -f1)
+if [ "$CPU_USAGE" -gt "$CPU_THRESHOLD" ]; then
+    send_slack_alert "CPU usage $CPU_USAGE% is greater than threshold $CPU_THRESHOLD%"
+fi
+
+# Check memory usage
+MEMORY_USAGE=$(free | awk '/^Mem:/ {print int(($3 / $2) * 100)}')
+if [ "$MEMORY_USAGE" -gt "$MEMORY_THRESHOLD" ]; then
+    send_slack_alert "Memory usage $MEMORY_USAGE% is greater than threshold $MEMORY_THRESHOLD%"
+fi
+
+# Check disk space usage
+# Get all SSDs/HDDs 
+DISK_LIST=($(lsblk -o NAME,TYPE -n | awk '/^(s|h)d/ {print $1}'))
+# Iterate through disks and check usage
+for DISK in "${DISK_LIST[@]}"; do
+    DISK_USAGE=$(df -h "/dev/$DISK" | awk 'NR==2 {print $5}' | cut -d '%' -f1)
+    if [ "$DISK_USAGE" -gt "$DISK_THRESHOLD" ]; then
+        send_slack_alert "Disk usage on disk /dev/$DISK $DISK_USAGE% is greater than threshold $DISK_THRESHOLD%"
+    fi
+done
