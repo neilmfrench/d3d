@@ -1,0 +1,63 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout') {
+            steps {
+                script {
+                  def scmVars = checkout scm
+                  env.GIT_COMMIT = scmVars.GIT_COMMIT
+                  env.GIT_BRANCH = scmVars.GIT_BRANCH
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                script {
+                    sh "mvn clean package"
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                script {
+                    sh "mvn test"
+                }
+            }
+        }
+
+        stage('Build Image') {
+          steps {
+            script {
+              sh "docker build -t some-registry.com/app-project/app:${GIT_COMMIT} ."
+            }
+          }
+        }
+
+        stage('Push Image') {
+          steps {
+            script {
+              sh "docker push some-registry.com/app-project/app:${GIT_COMMIT} ."
+            }
+          }
+        }
+
+        stage('Deploy') {
+          steps {
+            sh "helm upgrade app-chart -n app-ns --set image.tag=some-registry.com/app-project/app:${GIT_COMMIT}"
+          }
+        }
+    }
+
+    post {
+        success {
+            echo 'Success!'
+        }
+
+        failure {
+            echo 'Failed!'
+        }
+    }
+}
